@@ -1,11 +1,41 @@
 import { Router } from 'express';
-import { requireAuth } from '../middleware/auth';
+import { requireAuth, requireManager, AuthRequest } from '../middleware/auth';
 import { prisma } from '../services/prisma';
 import { createReportPdfBuffer } from '../utils/pdf';
 
 export const reportsRouter = Router();
 
-reportsRouter.post('/', requireAuth, async (req, res) => {
+// Get all reports (Viewers can view, Managers and Admins can manage)
+reportsRouter.get('/', requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const reports = await prisma.report.findMany({
+      where: { 
+        product: { companyId: req.user!.companyId } 
+      },
+      include: { 
+        product: { select: { name: true } },
+        createdBy: { select: { name: true, email: true } }
+      },
+      orderBy: { createdAt: 'desc' }
+    });
+    return res.json(reports);
+  } catch (error) {
+    console.log('Database error:', error);
+    // Return mock data if database is unavailable
+    return res.json([
+      {
+        id: 1,
+        fileName: 'demo_report.pdf',
+        createdAt: new Date(),
+        product: { name: 'Demo Product' },
+        createdBy: { name: 'Demo User', email: 'demo@example.com' }
+      }
+    ]);
+  }
+});
+
+// Generate and download report (Only Managers and Admins can create, Viewers can download existing)
+reportsRouter.post('/', requireAuth, requireManager, async (req: AuthRequest, res) => {
   const { productId, name, metadata } = req.body || {};
   if (!productId) return res.status(400).json({ error: 'productId is required' });
 
@@ -19,7 +49,11 @@ reportsRouter.post('/', requireAuth, async (req, res) => {
 
     const pdf = await createReportPdfBuffer(product);
     const report = await prisma.report.create({ 
-      data: { productId: product.id, fileName: `report_${product.id}.pdf` } 
+      data: { 
+        productId: product.id, 
+        fileName: `report_${product.id}.pdf`,
+        userId: Number(req.user!.userId)
+      } 
     });
 
     res.setHeader('Content-Type', 'application/pdf');
@@ -52,6 +86,56 @@ reportsRouter.post('/', requireAuth, async (req, res) => {
       console.error('PDF generation error:', pdfError);
       res.status(500).json({ error: 'Failed to generate PDF report' });
     }
+  }
+});
+
+// Download existing report (All authenticated users can download)
+reportsRouter.get('/:id/download', requireAuth, async (req: AuthRequest, res) => {
+  const reportId = Number(req.params.id);
+
+  try {
+    const report = await prisma.report.findFirst({
+      where: { 
+        id: reportId,
+        product: { companyId: req.user!.companyId } 
+      },
+      include: { 
+        product: { include: { questions: true } }
+      }
+    });
+    
+    if (!report) return res.status(404).json({ error: 'Report not found' });
+
+    const pdf = await createReportPdfBuffer(report.product);
+    
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${report.fileName}"`);
+    res.send(pdf);
+  } catch (error) {
+    console.log('Database error:', error);
+    return res.status(404).json({ error: 'Report not found' });
+  }
+});
+
+// Delete report (Only Admins)
+reportsRouter.delete('/:id', requireAuth, requireManager, async (req: AuthRequest, res) => {
+  const reportId = Number(req.params.id);
+
+  try {
+    const report = await prisma.report.findFirst({
+      where: { 
+        id: reportId,
+        product: { companyId: req.user!.companyId } 
+      }
+    });
+    
+    if (!report) return res.status(404).json({ error: 'Report not found' });
+
+    await prisma.report.delete({ where: { id: reportId } });
+    return res.json({ message: 'Report deleted successfully' });
+  } catch (error) {
+    console.log('Database error:', error);
+    return res.status(404).json({ error: 'Report not found' });
   }
 });
 

@@ -12,18 +12,35 @@ type Question = {
   help_text?: string;
 };
 
-export function MultiStepForm() {
+interface User {
+  id: string | number;
+  email: string;
+  role: string;
+  name?: string;
+  companyId: string;
+}
+
+interface Props {
+  user: User;
+}
+
+export function MultiStepForm({ user }: Props) {
   const [name, setName] = useState("Example Product");
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [questions, setQuestions] = useState<Question[]>([]);
   const [progress, setProgress] = useState(0);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [isViewer, setIsViewer] = useState(false);
   const token = useMemo(() => localStorage.getItem("token"), []);
 
   useEffect(() => {
-    fetchNext();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    // Check if user is a viewer (can only view reports)
+    setIsViewer(user.role === "VIEWER");
+
+    if (!isViewer) {
+      fetchNext();
+    }
+  }, [user.role, isViewer]);
 
   async function fetchNext() {
     const res = await fetch("http://localhost:8001/generate-questions", {
@@ -220,11 +237,68 @@ export function MultiStepForm() {
     }
   };
 
+  // Viewer-only view
+  if (isViewer) {
+    return (
+      <div className="bg-white rounded-lg shadow-lg p-6 max-w-2xl mx-auto">
+        <div className="text-center">
+          <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-gray-100 mb-4">
+            <svg
+              className="h-6 w-6 text-gray-600"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+              />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
+              />
+            </svg>
+          </div>
+          <h2 className="text-2xl font-bold text-gray-800 mb-4">
+            Viewer Access Only
+          </h2>
+          <p className="text-gray-600 mb-6">
+            As a Viewer, you can only view and download existing reports. Please
+            contact your administrator if you need to create new products or
+            reports.
+          </p>
+          <div className="bg-blue-50 border border-blue-200 rounded-md p-4">
+            <h3 className="text-sm font-medium text-blue-800 mb-2">
+              Your Permissions:
+            </h3>
+            <ul className="text-sm text-blue-700 space-y-1">
+              <li>• View existing products and reports</li>
+              <li>• Download transparency reports</li>
+              <li>• Read-only access to all data</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="bg-white rounded-lg shadow-lg p-6 max-w-2xl mx-auto">
-      <h2 className="text-2xl font-bold text-gray-800 mb-6">
-        Product Transparency Assessment
-      </h2>
+      <div className="flex items-center justify-between mb-6">
+        <h2 className="text-2xl font-bold text-gray-800">
+          Product Transparency Assessment
+        </h2>
+        <div className="text-right">
+          <div className="text-sm text-gray-600">Logged in as</div>
+          <div className="text-sm font-medium text-gray-900">
+            {user.name || user.email}
+          </div>
+        </div>
+      </div>
 
       <div className="space-y-6">
         <div>

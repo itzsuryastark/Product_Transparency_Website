@@ -5,6 +5,7 @@ import { json, urlencoded } from 'express';
 import { authRouter } from '../routes/auth';
 import { productsRouter } from '../routes/products';
 import { reportsRouter } from '../routes/reports';
+import { usersRouter } from '../routes/users';
 
 export const app = express();
 
@@ -20,5 +21,6 @@ app.get('/health', (_req, res) => {
 app.use('/auth', authRouter);
 app.use('/products', productsRouter);
 app.use('/reports', reportsRouter);
+app.use('/users', usersRouter);
 
 

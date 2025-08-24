@@ -7,6 +7,26 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model User {
+  id         Int      @id @default(autoincrement())
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  email      String   @unique
+  password   String
+  role       UserRole @default(VIEWER)
+  companyId  String
+  name       String?
+  isActive   Boolean  @default(true)
+  products   Product[]
+  reports    Report[]
+}
+
+enum UserRole {
+  ADMIN
+  MANAGER
+  VIEWER
+}
+
 model Product {
   id         Int        @id @default(autoincrement())
   createdAt  DateTime   @default(now())
@@ -14,6 +34,8 @@ model Product {
   companyId  String
   name       String
   metadata   Json
+  createdBy  User       @relation(fields: [userId], references: [id])
+  userId     Int
   questions  Question[]
   reports    Report[]
 }
@@ -33,6 +55,8 @@ model Report {
   product    Product  @relation(fields: [productId], references: [id])
   productId  Int
   fileName   String
+  createdBy  User     @relation(fields: [userId], references: [id])
+  userId     Int
 }
 
 
