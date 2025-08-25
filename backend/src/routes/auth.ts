@@ -35,61 +35,67 @@ authRouter.post('/login', async (req, res) => {
   if (!email || !password) return res.status(400).json({ error: 'Email and password required' });
 
   try {
-    // Try to find user in database first
-    const user = await prisma.user.findUnique({ where: { email } });
-    
-    if (user) {
-      const valid = await bcrypt.compare(password, user.password);
-      if (!valid) return res.status(401).json({ error: 'Invalid credentials' });
-      
-      if (!user.isActive) return res.status(401).json({ error: 'Account is deactivated' });
-
+    // First check if it's a demo user
+    const demoUser = demoUsers.find(u => u.email === email);
+    if (demoUser && demoUser.password === password) {
       const secret = process.env.JWT_SECRET || 'dev-secret';
       const token = jwt.sign({ 
-        userId: user.id,
-        companyId: user.companyId, 
-        email: user.email,
-        role: user.role,
-        name: user.name
+        userId: `demo-${demoUser.role.toLowerCase()}`,
+        companyId: demoUser.companyId, 
+        email: demoUser.email,
+        role: demoUser.role,
+        name: demoUser.name
       }, secret, { expiresIn: '8h' });
       
       return res.json({ 
         token,
         user: {
-          id: user.id,
-          email: user.email,
-          role: user.role,
-          name: user.name,
-          companyId: user.companyId
+          id: `demo-${demoUser.role.toLowerCase()}`,
+          email: demoUser.email,
+          role: demoUser.role,
+          name: demoUser.name,
+          companyId: demoUser.companyId
         }
       });
     }
 
-    // Fallback to demo users if database is not available
-    const demoUser = demoUsers.find(u => u.email === email);
-    if (!demoUser) return res.status(401).json({ error: 'Invalid credentials' });
-    
-    if (demoUser.password !== password) return res.status(401).json({ error: 'Invalid credentials' });
+    // Try to find user in database (only if not a demo user)
+    try {
+      const user = await prisma.user.findUnique({ where: { email } });
+      
+      if (user) {
+        const valid = await bcrypt.compare(password, user.password);
+        if (!valid) return res.status(401).json({ error: 'Invalid credentials' });
+        
+        if (!user.isActive) return res.status(401).json({ error: 'Account is deactivated' });
 
-    const secret = process.env.JWT_SECRET || 'dev-secret';
-    const token = jwt.sign({ 
-      userId: `demo-${demoUser.role.toLowerCase()}`,
-      companyId: demoUser.companyId, 
-      email: demoUser.email,
-      role: demoUser.role,
-      name: demoUser.name
-    }, secret, { expiresIn: '8h' });
-    
-    return res.json({ 
-      token,
-      user: {
-        id: `demo-${demoUser.role.toLowerCase()}`,
-        email: demoUser.email,
-        role: demoUser.role,
-        name: demoUser.name,
-        companyId: demoUser.companyId
+        const secret = process.env.JWT_SECRET || 'dev-secret';
+        const token = jwt.sign({ 
+          userId: user.id,
+          companyId: user.companyId, 
+          email: user.email,
+          role: user.role,
+          name: user.name
+        }, secret, { expiresIn: '8h' });
+        
+        return res.json({ 
+          token,
+          user: {
+            id: user.id,
+            email: user.email,
+            role: user.role,
+            name: user.name,
+            companyId: user.companyId
+          }
+        });
       }
-    });
+    } catch (dbError) {
+      console.log('Database connection error, using demo users only:', dbError);
+      // If database fails, we already checked demo users above
+    }
+
+    // If we get here, no valid user found
+    return res.status(401).json({ error: 'Invalid credentials' });
   } catch (error) {
     console.error('Login error:', error);
     return res.status(500).json({ error: 'Internal server error' });
@@ -178,18 +184,23 @@ authRouter.get('/me', async (req, res) => {
     }
 
     // Database user
-    const user = await prisma.user.findUnique({ where: { id: decoded.userId } });
-    if (!user || !user.isActive) return res.status(401).json({ error: 'User not found or inactive' });
+    try {
+      const user = await prisma.user.findUnique({ where: { id: decoded.userId } });
+      if (!user || !user.isActive) return res.status(401).json({ error: 'User not found or inactive' });
 
-    return res.json({
-      user: {
-        id: user.id,
-        email: user.email,
-        role: user.role,
-        name: user.name,
-        companyId: user.companyId
-      }
-    });
+      return res.json({
+        user: {
+          id: user.id,
+          email: user.email,
+          role: user.role,
+          name: user.name,
+          companyId: user.companyId
+        }
+      });
+    } catch (dbError) {
+      console.log('Database connection error in /me:', dbError);
+      return res.status(500).json({ error: 'Database connection error' });
+    }
   } catch (error) {
     return res.status(401).json({ error: 'Invalid token' });
   }
